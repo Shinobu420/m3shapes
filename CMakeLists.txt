@@ -1,6 +1,8 @@
 cmake_minimum_required(VERSION 3.16)
 project(M3Shapes VERSION 1.0.0 LANGUAGES CXX)
 
+include(GNUInstallDirs)
+
 set(CMAKE_CXX_STANDARD 20)
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
 set(CMAKE_CXX_EXTENSIONS OFF)
@@ -23,7 +25,7 @@ find_package(Qt6 REQUIRED COMPONENTS Core Quick Qml ShaderTools)
 qt_standard_project_setup(REQUIRES 6.8)
 
 # Core library
-add_library(m3shapes_core STATIC
+add_library(m3shapes_core OBJECT
     src/core/Point.hpp
     src/core/Utils.hpp
     src/core/CornerRounding.hpp
@@ -36,7 +38,8 @@ add_library(m3shapes_core STATIC
 )
 
 target_include_directories(m3shapes_core PUBLIC
-    ${CMAKE_CURRENT_SOURCE_DIR}/src
+    $<BUILD_INTERFACE:${CMAKE_CURRENT_SOURCE_DIR}/src>
+    $<INSTALL_INTERFACE:${CMAKE_INSTALL_INCLUDEDIR}>
 )
 
 target_link_libraries(m3shapes_core PUBLIC
@@ -44,7 +47,7 @@ target_link_libraries(m3shapes_core PUBLIC
 )
 
 # Morph library
-add_library(m3shapes_morph STATIC
+add_library(m3shapes_morph OBJECT
     src/morph/FloatMapping.hpp
     src/morph/FloatMapping.cpp
     src/morph/PolygonMeasure.hpp
@@ -56,7 +59,8 @@ add_library(m3shapes_morph STATIC
 )
 
 target_include_directories(m3shapes_morph PUBLIC
-    ${CMAKE_CURRENT_SOURCE_DIR}/src
+    $<BUILD_INTERFACE:${CMAKE_CURRENT_SOURCE_DIR}/src>
+    $<INSTALL_INTERFACE:${CMAKE_INSTALL_INCLUDEDIR}>
 )
 
 target_link_libraries(m3shapes_morph PUBLIC
@@ -64,7 +68,7 @@ target_link_libraries(m3shapes_morph PUBLIC
 )
 
 # Shapes library
-add_library(m3shapes_shapes STATIC
+add_library(m3shapes_shapes OBJECT
     src/shapes/Shapes.hpp
     src/shapes/Shapes.cpp
     src/shapes/MaterialShapes.hpp
@@ -72,7 +76,8 @@ add_library(m3shapes_shapes STATIC
 )
 
 target_include_directories(m3shapes_shapes PUBLIC
-    ${CMAKE_CURRENT_SOURCE_DIR}/src
+    $<BUILD_INTERFACE:${CMAKE_CURRENT_SOURCE_DIR}/src>
+    $<INSTALL_INTERFACE:${CMAKE_INSTALL_INCLUDEDIR}>
 )
 
 target_link_libraries(m3shapes_shapes PUBLIC
@@ -105,20 +110,27 @@ qt_add_shaders(m3shapes "m3shapes_shaders"
 )
 
 target_include_directories(m3shapes PUBLIC
-    ${CMAKE_CURRENT_SOURCE_DIR}/src
-    ${CMAKE_CURRENT_SOURCE_DIR}/src/qml
+    $<BUILD_INTERFACE:${CMAKE_CURRENT_SOURCE_DIR}/src>
+    $<BUILD_INTERFACE:${CMAKE_CURRENT_SOURCE_DIR}/src/qml>
+    $<INSTALL_INTERFACE:${CMAKE_INSTALL_INCLUDEDIR}>
 )
 
 target_link_libraries(m3shapes PUBLIC
-    Qt::Quick
-    Qt::Qml
+    Qt6::Quick
+    Qt6::Qml
+PRIVATE
     m3shapes_core
     m3shapes_morph
     m3shapes_shapes
 )
 
+set_target_properties(m3shapes PROPERTIES EXPORT_NAME M3Shapes)
+add_library(M3Shapes::M3Shapes ALIAS m3shapes)
+
 # Install the backing library and the plugin side by side in the module dir.
-set(INSTALL_QMLDIR "usr/lib/qt6/qml" CACHE STRING "QML install dir")
+if(NOT DEFINED INSTALL_QMLDIR)
+    set(INSTALL_QMLDIR "${CMAKE_INSTALL_LIBDIR}/qt6/qml" CACHE STRING "QML install dir")
+endif()
 
 message(STATUS "QML install dir: ${CMAKE_INSTALL_PREFIX}/${INSTALL_QMLDIR}")
 
@@ -131,9 +143,15 @@ qt_query_qml_module(m3shapes
 
 set(module_dir "${INSTALL_QMLDIR}/${module_target_path}")
 
+set_target_properties("${module_plugin_target}" PROPERTIES
+    INSTALL_RPATH "$ORIGIN:$ORIGIN/../../.."
+)
+
 install(TARGETS m3shapes
-    LIBRARY DESTINATION "${module_dir}"
-    RUNTIME DESTINATION "${module_dir}"
+    EXPORT M3ShapesTargets
+    LIBRARY DESTINATION "${CMAKE_INSTALL_LIBDIR}"
+    ARCHIVE DESTINATION "${CMAKE_INSTALL_LIBDIR}"
+    RUNTIME DESTINATION "${CMAKE_INSTALL_BINDIR}"
 )
 install(TARGETS "${module_plugin_target}"
     LIBRARY DESTINATION "${module_dir}"
@@ -141,6 +159,48 @@ install(TARGETS "${module_plugin_target}"
 )
 install(FILES "${module_qmldir}" DESTINATION "${module_dir}")
 install(FILES "${module_typeinfo}" DESTINATION "${module_dir}")
+
+# Install public header files
+install(DIRECTORY src/
+    DESTINATION "${CMAKE_INSTALL_INCLUDEDIR}/M3Shapes"
+    FILES_MATCHING
+    PATTERN "*.hpp"
+    PATTERN "*.h"
+    PATTERN "shaders" EXCLUDE
+    PATTERN "SmoothShapeMaterial.hpp" EXCLUDE
+)
+install(FILES src/M3Shapes
+    DESTINATION "${CMAKE_INSTALL_INCLUDEDIR}/M3Shapes"
+)
+
+# Export CMake package configuration
+include(CMakePackageConfigHelpers)
+
+set(M3SHAPES_INSTALL_CMAKEDIR "${CMAKE_INSTALL_LIBDIR}/cmake/M3Shapes")
+
+configure_package_config_file(
+    "${CMAKE_CURRENT_SOURCE_DIR}/cmake/M3ShapesConfig.cmake.in"
+    "${CMAKE_CURRENT_BINARY_DIR}/M3ShapesConfig.cmake"
+    INSTALL_DESTINATION "${M3SHAPES_INSTALL_CMAKEDIR}"
+)
+
+write_basic_package_version_file(
+    "${CMAKE_CURRENT_BINARY_DIR}/M3ShapesConfigVersion.cmake"
+    VERSION ${PROJECT_VERSION}
+    COMPATIBILITY SameMajorVersion
+)
+
+install(EXPORT M3ShapesTargets
+    FILE M3ShapesTargets.cmake
+    NAMESPACE M3Shapes::
+    DESTINATION "${M3SHAPES_INSTALL_CMAKEDIR}"
+)
+
+install(FILES
+    "${CMAKE_CURRENT_BINARY_DIR}/M3ShapesConfig.cmake"
+    "${CMAKE_CURRENT_BINARY_DIR}/M3ShapesConfigVersion.cmake"
+    DESTINATION "${M3SHAPES_INSTALL_CMAKEDIR}"
+)
 
 # Example application
 option(M3SHAPES_BUILD_EXAMPLES "Build example applications" OFF)

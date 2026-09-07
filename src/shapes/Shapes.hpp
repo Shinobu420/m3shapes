@@ -1,6 +1,7 @@
 #pragma once
 
-#include "core/RoundedPolygon.hpp"
+#include "../core/RoundedPolygon.hpp"
+#include <vector>
 
 namespace RoundedPolygon {
 
